@@ -8,7 +8,7 @@ import asyncio
 
 # Config
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-PUBLIC_CHANNEL = "@ethio_exam_sample"
+PUBLIC_CHANNEL = "@ethioegzam"
 PRIVATE_CHANNEL_ID = -1002666249316
 
 # Logging
@@ -74,9 +74,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_id=message_id
         )
 
-        # Wait 10 minutes then delete the forwarded message
-        await asyncio.sleep(30)
+        # Wait 5 minutes then delete the forwarded message
+        await update.message.reply_text("ℹ️ This file will be automatically deleted after 5 minutes due to copyright protection.")
+        await asyncio.sleep(300)
         await bot.delete_message(chat_id=forwarded.chat.id, message_id=forwarded.message_id)
+        
 
     except Exception as e:
         logger.error(f"Failed to forward or delete message: {e}")
