@@ -34,6 +34,14 @@ async def is_user_subscribed(bot: Bot, user_id: int) -> bool:
         logger.error(f"Error checking subscription: {e}")
         return False
 
+# Background delete function
+async def delete_later(bot: Bot, chat_id: int, message_id: int, delay: int = 300):
+    await asyncio.sleep(delay)
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        logger.error(f"Failed to delete message: {e}")
+
 # Start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -74,11 +82,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_id=message_id
         )
 
-        # Wait 5 minutes then delete the forwarded message
         await update.message.reply_text("ℹ️ This file will be automatically deleted after 5 minutes due to copyright protection.")
-        await asyncio.sleep(300)
-        await bot.delete_message(chat_id=forwarded.chat.id, message_id=forwarded.message_id)
-        
+
+        # Run delete in the background
+        asyncio.create_task(delete_later(bot, forwarded.chat.id, forwarded.message_id))
 
     except Exception as e:
         logger.error(f"Failed to forward or delete message: {e}")
