@@ -4,6 +4,7 @@ from flask import Flask
 from threading import Thread
 import os
 import logging
+import asyncio  # Add this import at the top
 
 # Config
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -35,6 +36,52 @@ async def is_user_subscribed(bot: Bot, user_id: int) -> bool:
 
 # Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    bot = context.bot
+
+    if not context.args:
+        await update.message.reply_text("Please use the correct link to access the file.")
+        return
+
+    raw_code = context.args[0]
+    message_id = None
+
+    # Extract message ID
+    if raw_code.startswith("https://t.me/c/"):
+        parts = raw_code.strip().split("/")
+        if parts[-1].isdigit():
+            message_id = int(parts[-1])
+    elif raw_code.isdigit():
+        message_id = int(raw_code)
+
+    if not message_id:
+        await update.message.reply_text("Invalid file link or code.")
+        return
+
+    # Check subscription
+    if not await is_user_subscribed(bot, user.id):
+        await update.message.reply_text(
+            f"📢 Please join our channel first:\nhttps://t.me/{PUBLIC_CHANNEL.lstrip('@')}\n\n"
+            "Then click the link again to get your file."
+        )
+        return
+
+    try:
+        # Forward the file
+        forwarded = await bot.forward_message(
+            chat_id=update.effective_chat.id,
+            from_chat_id=PRIVATE_CHANNEL_ID,
+            message_id=message_id
+        )
+
+        # Wait 10 minutes, then delete
+        await asyncio.sleep(600)
+        await bot.delete_message(chat_id=forwarded.chat.id, message_id=forwarded.message_id)
+
+    except Exception as e:
+        logger.error(f"Failed to forward or delete message: {e}")
+        await update.message.reply_text("❌ Couldn't retrieve the file. Please try again later.")
+
     user = update.effective_user
     bot = context.bot
 
