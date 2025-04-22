@@ -4,7 +4,7 @@ from flask import Flask
 from threading import Thread
 import os
 import logging
-import asyncio  # Add this import at the top
+import asyncio
 
 # Config
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -15,7 +15,7 @@ PRIVATE_CHANNEL_ID = -1002666249316
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flask (for keep-alive if hosted on platforms like Heroku)
+# Flask app for keep-alive
 app = Flask(__name__)
 
 @app.route('/')
@@ -25,7 +25,7 @@ def home():
 def run_flask():
     app.run(host='0.0.0.0', port=5000)
 
-# Check subscription
+# Subscription checker
 async def is_user_subscribed(bot: Bot, user_id: int) -> bool:
     try:
         member = await bot.get_chat_member(PUBLIC_CHANNEL, user_id)
@@ -34,7 +34,7 @@ async def is_user_subscribed(bot: Bot, user_id: int) -> bool:
         logger.error(f"Error checking subscription: {e}")
         return False
 
-# Start command
+# Start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     bot = context.bot
@@ -58,7 +58,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Invalid file link or code.")
         return
 
-    # Check subscription
+    # Check if the user is subscribed
     if not await is_user_subscribed(bot, user.id):
         await update.message.reply_text(
             f"📢 Please join our channel first:\nhttps://t.me/{PUBLIC_CHANNEL.lstrip('@')}\n\n"
@@ -67,69 +67,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        # Forward the file
+        # Forward the file from private channel
         forwarded = await bot.forward_message(
             chat_id=update.effective_chat.id,
             from_chat_id=PRIVATE_CHANNEL_ID,
             message_id=message_id
         )
 
-        # Wait 10 minutes, then delete
-        await asyncio.sleep(600)
+        # Wait 10 minutes then delete the forwarded message
+        await asyncio.sleep(30)
         await bot.delete_message(chat_id=forwarded.chat.id, message_id=forwarded.message_id)
 
     except Exception as e:
         logger.error(f"Failed to forward or delete message: {e}")
         await update.message.reply_text("❌ Couldn't retrieve the file. Please try again later.")
 
-    user = update.effective_user
-    bot = context.bot
-
-    if not context.args:
-        await update.message.reply_text("Please use the correct link to access the file.")
-        return
-
-    raw_code = context.args[0]
-    message_id = None
-
-    # Extract message ID
-    if raw_code.startswith("https://t.me/c/"):
-        parts = raw_code.strip().split("/")
-        if parts[-1].isdigit():
-            message_id = int(parts[-1])
-    elif raw_code.isdigit():
-        message_id = int(raw_code)
-
-    if not message_id:
-        await update.message.reply_text("Invalid file link or code.")
-        return
-
-    # Check subscription
-    if not await is_user_subscribed(bot, user.id):
-        await update.message.reply_text(
-            f"📢 Please join our channel first:\nhttps://t.me/{PUBLIC_CHANNEL.lstrip('@')}\n\n"
-            "Then click the link again to get your file."
-        )
-        return
-
-    # Forward file
-    try:
-        await bot.forward_message(
-            chat_id=update.effective_chat.id,
-            from_chat_id=PRIVATE_CHANNEL_ID,
-            message_id=message_id
-        )
-    except Exception as e:
-        logger.error(f"Failed to forward message: {e}")
-        await update.message.reply_text("❌ Couldn't retrieve the file. Please try again later.")
-
-# Handle plain messages
+# Handle random text messages
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"💡 Please use the file links from our channel:\nhttps://t.me/{PUBLIC_CHANNEL.lstrip('@')}"
     )
 
-# Main bot runner
+# Main runner
 def main():
     Thread(target=run_flask).start()
 
