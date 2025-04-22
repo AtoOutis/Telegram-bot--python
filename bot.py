@@ -1,80 +1,97 @@
-from telegram import Update
+from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes, CommandHandler
 from flask import Flask
 from threading import Thread
 import os
-import telegram
+import logging
 
+# Config
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+PUBLIC_CHANNEL = "@ethio_exam_sample"
+PRIVATE_CHANNEL_ID = -1002666249316
 
-PUBLIC_CHANNEL = "@ethioegzam"
-PRIVATE_CHANNEL_ID = -1002666249316  # Replace with your actual private channel ID
+# Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-
-# Create a Flask app to keep the bot alive
+# Flask (for keep-alive if hosted on platforms like Heroku)
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "Bot is running!"
 
-# Function to keep Flask app running in a separate thread
 def run_flask():
     app.run(host='0.0.0.0', port=5000)
 
-# Telegram bot handler
-async def is_user_subscribed(bot: telegram.Bot, user_id: int) -> bool:
+# Check subscription
+async def is_user_subscribed(bot: Bot, user_id: int) -> bool:
     try:
         member = await bot.get_chat_member(PUBLIC_CHANNEL, user_id)
         return member.status in ["member", "administrator", "creator"]
-    except:
+    except Exception as e:
+        logger.error(f"Error checking subscription: {e}")
         return False
 
-# New handler for /start command
+# Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     bot = context.bot
 
-    # Get message ID from parameter
-    if context.args:
-        code = context.args[0]
-    else:
-        await update.message.reply_text("Invalid or missing code.")
+    if not context.args:
+        await update.message.reply_text("Please use the correct link to access the file.")
+        return
+
+    raw_code = context.args[0]
+    message_id = None
+
+    # Extract message ID
+    if raw_code.startswith("https://t.me/c/"):
+        parts = raw_code.strip().split("/")
+        if parts[-1].isdigit():
+            message_id = int(parts[-1])
+    elif raw_code.isdigit():
+        message_id = int(raw_code)
+
+    if not message_id:
+        await update.message.reply_text("Invalid file link or code.")
         return
 
     # Check subscription
-    subscribed = await is_user_subscribed(bot, user.id)
-    if not subscribed:
-        await update.message.reply_text(f"Please join our channel first:\nhttps://t.me/{PUBLIC_CHANNEL.lstrip('@')}")
+    if not await is_user_subscribed(bot, user.id):
+        await update.message.reply_text(
+            f"📢 Please join our channel first:\nhttps://t.me/{PUBLIC_CHANNEL.lstrip('@')}\n\n"
+            "Then click the link again to get your file."
+        )
         return
 
-    # Forward the file from private channel
+    # Forward file
     try:
-        message_id = int(code)
         await bot.forward_message(
             chat_id=update.effective_chat.id,
             from_chat_id=PRIVATE_CHANNEL_ID,
             message_id=message_id
         )
     except Exception as e:
-        await update.message.reply_text("Sorry, the file could not be retrieved.")
+        logger.error(f"Failed to forward message: {e}")
+        await update.message.reply_text("❌ Couldn't retrieve the file. Please try again later.")
 
-# Keep your existing handle_message or remove it
+# Handle plain messages
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Send /start <code> to get your course material.")
+    await update.message.reply_text(
+        f"💡 Please use the file links from our channel:\nhttps://t.me/{PUBLIC_CHANNEL.lstrip('@')}"
+    )
+
+# Main bot runner
+def main():
+    Thread(target=run_flask).start()
+
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    logger.info("Bot is running...")
+    application.run_polling()
 
 if __name__ == "__main__":
-    # Run Flask in a separate thread
-    thread = Thread(target=run_flask)
-    thread.start()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-
-    # Set up the Telegram bot
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("Bot is running...")
-    app.run_polling()
+    main()
